@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DFAM Model Playground</title>
+<style>
+  :root {
+    --bg: #15171a; --panel: #1f2226; --line: #33373d; --text: #e7e3dc; --muted: #9a958c;
+    --accent: #e0a53a; --accent2: #6fb3c9; --on: #e05a3a;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-size: 13px; }
+  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px 16px;
+           border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; letter-spacing: .04em; }
+  button, select { background: var(--panel); color: var(--text); border: 1px solid var(--line);
+                   border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 600; }
+  button:hover, select:hover { border-color: var(--accent); }
+  main { padding: 16px; display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--accent);
+       margin: 0 0 10px; }
+  .ctl { display: grid; grid-template-columns: 110px 1fr 58px; gap: 8px; align-items: center; margin: 6px 0; }
+  .ctl label { color: var(--muted); }
+  .ctl output { text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctl .seg { grid-column: 2 / 4; justify-self: start; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 4px 10px; }
+  .seg button.sel { background: var(--accent2); color: #111; }
+  .steps { display: grid; grid-template-columns: 70px repeat(8, 1fr); gap: 6px; align-items: center; }
+  .steps .hdr { text-align: center; color: var(--muted); padding: 2px 0; border-radius: 4px; }
+  .steps .hdr.active { background: var(--on); color: #fff; }
+  .steps input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 90px; width: 24px; justify-self: center; }
+  .steps .val { text-align: center; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; height: 120px; display: block; background: #0f1113; border-radius: 6px; }
+  textarea { width: 100%; height: 120px; background: #0f1113; color: var(--text); border: 1px solid var(--line);
+             border-radius: 6px; font: 12px ui-monospace, monospace; padding: 8px; }
+  .note { color: var(--muted); margin: 6px 0 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  details.circuit > summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+                             color: var(--accent); list-style-position: inside; }
+  .cgroups { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); margin-top: 12px; }
+  .cgroups h3 { font-size: 11px; color: var(--accent2); margin: 0 0 4px; font-weight: 600; letter-spacing: .06em; }
+  .cctl { display: grid; grid-template-columns: 128px 1fr 84px 18px; gap: 6px; align-items: center; margin: 4px 0; }
+  .cctl label { color: var(--muted); font: 11px ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; }
+  .cctl label.changed { color: var(--accent); }
+  .cctl input[type=number] { width: 100%; background: #0f1113; color: var(--text); border: 1px solid var(--line);
+                             border-radius: 4px; padding: 3px 4px; font: 11px ui-monospace, monospace; }
+  .cctl button { padding: 0; border: 0; background: none; color: var(--muted); visibility: hidden; }
+  .cctl button.show { visibility: visible; }
+  .cctl button:hover { color: var(--accent); }
+  @media (max-width: 600px) {
+    .cgroups { grid-template-columns: 1fr; }
+    .cctl { grid-template-columns: 110px 1fr 74px 18px; }
+    .steps { grid-template-columns: 50px repeat(8, 1fr); gap: 2px; }
+    .ctl { grid-template-columns: 90px 1fr 50px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>DFAM model</h1>
+  <button id="power" class="primary">Start audio</button>
+  <button id="run">Stop sequencer</button>
+  <button id="hit">Trigger</button>
+  <select id="preset"></select>
+  <span id="status" class="note"></span>
+</header>
+<main id="main">
+  <section class="wide">
+    <h2>Sequencer</h2>
+    <div class="steps" id="steps"></div>
+  </section>
+</main>
+<!-- Built by build-standalone.mjs: engine and presets are inlined so this
+     file works when opened directly, with no server. -->
+<script id="engine">/*@ENGINE@*/</script>
+<script>/*@PRESETS@*/</script>
+<script type="text/plain" id="host-src">
+// Runs the model and answers control messages. Used inside the AudioWorklet,
+// or on the main thread (ScriptProcessor) where AudioWorklet is unavailable.
+class DfamHost {
+  constructor(sampleRate) { this.sr = sampleRate; this.patch = {}; this.oversample = 4; this.synth = null; this.running = true; }
+  message(data) {
+    if (data.type === 'init') {
+      this.patch = { ...data.patch };
+      this.oversample = data.oversample ?? this.oversample;
+      this.synth = new Dfam(this.sr, this.patch, this.oversample);
+      this.synth.running = this.running;
+    } else if (data.type === 'patch') {
+      Object.assign(this.patch, data.changes);
+      this.synth?.setPatch(data.changes);
+    } else if (data.type === 'run') {
+      this.running = data.running;
+      if (this.synth) this.synth.running = data.running;
+    } else if (data.type === 'trigger') {
+      this.synth?.trigger(data.velocity ?? 1);
+    }
+  }
+  render(out) { if (this.synth) this.synth.render(out); else out.fill(0); return this.synth ? this.synth.step : -1; }
+}
+if (typeof registerProcessor === 'function') {
+  registerProcessor('dfam', class extends AudioWorkletProcessor {
+    constructor() {
+      super();
+      this.host = new DfamHost(sampleRate);
+      this.lastStep = -2;
+      this.port.onmessage = ({ data }) => this.host.message(data);
+    }
+    process(_inputs, outputs) {
+      const out = outputs[0];
+      const step = this.host.render(out[0]);
+      for (let c = 1; c < out.length; c++) out[c].set(out[0]);
+      if (step !== this.lastStep) { this.lastStep = step; this.port.postMessage({ type: 'step', step }); }
+      return true;
+    }
+  });
+}
+</script>
+<script>
+
+// [key, label, min, max, step, log?]  Knob ranges for the playground.
+const PANELS = [
+  ['Sequencer', [['tempo', 'Tempo (BPM)', 40, 300, 1], ['steps_per_beat', 'Steps / beat', 1, 8, 1]],
+    [['seq_pitch_mod', 'Seq pitch', ['both', 'off', 'vco2']]]],
+  ['VCO 1', [['vco1_freq', 'Frequency', 10, 4000, 0, true], ['vco1_eg_amount', 'EG amount', -1, 1, 0.01],
+    ['vco1_level', 'Mixer level', 0, 1, 0.01]], [['vco1_wave', 'Wave', ['triangle', 'square']]]],
+  ['VCO 2', [['vco2_freq', 'Frequency', 10, 4000, 0, true], ['vco2_eg_amount', 'EG amount', -1, 1, 0.01],
+    ['vco2_level', 'Mixer level', 0, 1, 0.01], ['fm_1_2', '1→2 FM', 0, 1, 0.01]],
+    [['vco2_wave', 'Wave', ['triangle', 'square']], ['hard_sync', 'Hard sync', [false, true]]]],
+  ['Pitch EG / noise', [['vco_decay', 'VCO decay', 0, 1, 0.01], ['noise_level', 'Noise level', 0, 1, 0.01],
+    ['noise_vcf_mod', 'Noise → VCF', 0, 1, 0.01]], []],
+  ['VCF', [['cutoff', 'Cutoff', 20, 16000, 0, true], ['resonance', 'Resonance', 0, 1, 0.01],
+    ['vcf_eg_amount', 'EG amount', -1, 1, 0.01], ['vcf_decay', 'VCF decay', 0, 1, 0.01]],
+    [['vcf_mode', 'Mode', ['lp', 'hp']]]],
+  ['VCA', [['vca_decay', 'VCA decay', 0, 1, 0.01], ['volume', 'Volume', 0, 1, 0.01]],
+    [['vca_attack', 'Attack', ['fast', 'slow']]]],
+  ['Analog', [['temperature', 'Temp (°C)', 0, 50, 0.5], ['seed', 'Unit (seed)', 1, 64, 1]],
+    [['oversample', 'Oversample', [4, 2]]]],
+];
+const RESET_KEYS = new Set(['temperature', 'seed', 'oversample', ...CIRCUIT_REBUILD_KEYS]);  // need a new engine
+const CIRCUIT_KEYS = new Set(CIRCUIT_INFO.map((e) => e[0]));
+
+let patch = structuredClone({ ...DEFAULT_PATCH });
+let oversample = 4;
+let ctx = null, node = null, analyser = null, running = true;
+const widgets = {};  // key -> { set(value) }
+
+const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : step === 0 ? (v >= 100 ? v.toFixed(0) : v.toFixed(1)) : v.toFixed(2));
+
+function send(msg) { node?.port.postMessage(msg); }
+function change(key, value) {
+  if (key === 'oversample') oversample = value; else patch[key] = value;
+  if (RESET_KEYS.has(key)) initEngine();
+  else send({ type: 'patch', changes: { [key]: value } });
+}
+function initEngine() { send({ type: 'init', patch, oversample }); }
+let rebuildTimer = 0;  // circuit sliders rebuild the engine; don't do it on every drag event
+function changeSoon(key, value) {
+  if (!RESET_KEYS.has(key)) return change(key, value);
+  patch[key] = value;
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(initEngine, 120);
+}
+
+function slider([key, label, min, max, step, log]) {
+  const row = document.createElement('div');
+  row.className = 'ctl';
+  row.innerHTML = `<label>${label}</label><input type="range"><output></output>`;
+  const input = row.querySelector('input'), out = row.querySelector('output');
+  const toPos = (v) => (log ? (1000 * Math.log(v / min)) / Math.log(max / min) : v);
+  const fromPos = (p) => (log ? min * Math.pow(max / min, p / 1000) : Number(p));
+  Object.assign(input, log ? { min: 0, max: 1000, step: 1 } : { min, max, step });
+  const set = (v) => { input.value = toPos(v); out.value = fmt(v, step); };
+  input.addEventListener('input', () => { const v = fromPos(input.value); out.value = fmt(v, step); change(key, v); });
+  widgets[key] = { set };
+  return row;
+}
+
+function segmented([key, label, options]) {
+  const row = document.createElement('div');
+  row.className = 'ctl';
+  row.innerHTML = `<label>${label}</label><div class="seg"></div>`;
+  const seg = row.querySelector('.seg');
+  const buttons = options.map((opt) => {
+    const b = document.createElement('button');
+    b.textContent = opt === true ? 'on' : opt === false ? 'off' : String(opt) + (key === 'oversample' ? '×' : '');
+    b.onclick = () => { set(opt); change(key, opt); };
+    seg.append(b);
+    return b;
+  });
+  const set = (v) => buttons.forEach((b, i) => b.classList.toggle('sel', options[i] === v));
+  widgets[key] = { set };
+  return row;
+}
+
+// Build panels
+const main = document.getElementById('main');
+for (const [title, sliders, switches] of PANELS) {
+  const sec = document.createElement('section');
+  sec.innerHTML = `<h2>${title}</h2>`;
+  sliders.forEach((s) => sec.append(slider(s)));
+  switches.forEach((s) => sec.append(segmented(s)));
+  if (title === 'Sequencer') document.querySelector('section.wide').append(...sec.querySelectorAll('.ctl'));
+  else main.append(sec);
+}
+
+// Circuit panel: the estimated component values. Each has a log slider from
+// 1/4x to 4x its default (linear for the trim temperature) and an exact box.
+function circuitRow([key, def, , help, live]) {
+  const row = document.createElement('div');
+  row.className = 'cctl';
+  row.title = `${help}. Default ${formatValue(def)}.` + (live ? ' Changes live.' : ' Rebuilds the circuit.');
+  row.innerHTML = `<label>${key}</label><input type="range" min="0" max="1000" step="1">
+    <input type="number" step="any"><button title="Reset to default">↺</button>`;
+  const [lab, range, box, reset] = row.children;
+  const lin = key === 'trim_temperature';
+  const lo = lin ? 0 : def / 4, hi = lin ? 50 : def * 4;
+  const toPos = (v) => (lin ? (1000 * (v - lo)) / (hi - lo) : v > 0 ? (1000 * Math.log(v / lo)) / Math.log(hi / lo) : 0);
+  const fromPos = (q) => Number((lin ? lo + ((hi - lo) * q) / 1000 : lo * Math.pow(hi / lo, q / 1000)).toPrecision(3));
+  const set = (v) => {
+    range.value = toPos(v);
+    box.value = formatValue(v);
+    const changed = v !== def;
+    lab.classList.toggle('changed', changed);
+    reset.classList.toggle('show', changed);
+  };
+  const apply = (v) => { if (!Number.isFinite(v)) return; set(v); changeSoon(key, v); };
+  range.addEventListener('input', () => apply(fromPos(Number(range.value))));
+  box.addEventListener('change', () => apply(Number(box.value)));
+  reset.onclick = () => apply(def);
+  widgets[key] = { set };
+  return row;
+}
+const circuitSec = document.createElement('section');
+{
+  const sec = circuitSec;
+  sec.className = 'wide';
+  sec.innerHTML = `<details class="circuit"><summary>Circuit: estimated component values</summary>
+    <p class="note">Moog hasn't published DFAM schematics, so these values are guesses. Tune them by ear or against
+    recordings. Units are SI (F, Ω, V, s, Hz). <code>_tol</code> is a ±3σ tolerance and <code>_sd</code> is 1σ; both set the
+    unit-to-unit spread for the seed. Caps, tolerances, thresholds and the envelope voltages rebuild the circuit
+    when changed; the rest change live. Hover a row to see what it is.
+    Changed values are highlighted and go into the copied preset text.</p>
+    <div class="row"><button id="circuit-reset">Reset all to defaults</button></div>
+    <div class="cgroups"></div></details>`;
+  const groups = sec.querySelector('.cgroups');
+  const byGroup = {};
+  for (const e of CIRCUIT_INFO) {
+    if (!byGroup[e[2]]) {
+      const g = document.createElement('div');
+      g.innerHTML = `<h3>${e[2]}</h3>`;
+      groups.append(g);
+      byGroup[e[2]] = g;
+    }
+    byGroup[e[2]].append(circuitRow(e));
+  }
+  sec.querySelector('#circuit-reset').onclick = () => {
+    Object.assign(patch, DEFAULT_CIRCUIT);
+    refreshWidgets();
+    initEngine();
+  };
+}
+
+// Step grid: pitch (V) and velocity
+const steps = document.getElementById('steps');
+const stepHdrs = [];
+const stepInputs = { pitch: [], velocity: [] };
+steps.append(Object.assign(document.createElement('div'), { textContent: '' }));
+for (let i = 0; i < 8; i++) {
+  const h = Object.assign(document.createElement('div'), { className: 'hdr', textContent: i + 1 });
+  stepHdrs.push(h); steps.append(h);
+}
+for (const [key, label, min, max] of [['pitch', 'Pitch (V)', -3, 3], ['velocity', 'Velocity', 0, 1]]) {
+  steps.append(Object.assign(document.createElement('div'), { textContent: label, className: 'note' }));
+  for (let i = 0; i < 8; i++) {
+    const cell = document.createElement('div');
+    cell.style.display = 'grid';
+    const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step: 0.01 });
+    const val = Object.assign(document.createElement('div'), { className: 'val' });
+    input.addEventListener('input', () => {
+      patch[key] = [...patch[key]]; patch[key][i] = Number(input.value);
+      val.textContent = Number(input.value).toFixed(2);
+      send({ type: 'patch', changes: { [key]: patch[key] } });
+    });
+    stepInputs[key].push({ input, val });
+    cell.append(input, val); steps.append(cell);
+  }
+}
+
+// Scope + patch text
+const scopeSec = document.createElement('section');
+scopeSec.className = 'wide';
+scopeSec.innerHTML = `<h2>Output</h2><canvas id="scope" width="1200" height="240"></canvas>
+  <div class="row" style="margin-top:10px"><button id="copy">Copy patch as preset text</button>
+  <button id="load">Load preset text</button></div>
+  <textarea id="text" spellcheck="false" placeholder="Preset text (same format as presets/*.txt)"></textarea>
+  <p class="note">Knobs change live. Temperature, unit (seed), oversampling and some circuit values rebuild the circuit.
+  The model is the same code as the C++ version, so a preset copied here renders identically with dfam_render.
+  If the audio crackles, switch Oversample to 2×.</p>`;
+main.append(scopeSec, circuitSec);
+
+function refreshWidgets() {
+  for (const [k, w] of Object.entries(widgets)) w.set(k === 'oversample' ? oversample : patch[k]);
+  for (const key of ['pitch', 'velocity'])
+    stepInputs[key].forEach(({ input, val }, i) => { input.value = patch[key][i]; val.textContent = patch[key][i].toFixed(2); });
+}
+
+function loadPatch(p) {
+  patch = { ...structuredClone(DEFAULT_PATCH), ...p };
+  refreshWidgets();
+  initEngine();
+}
+
+function patchToText() {
+  const knobs = Object.entries(patch).filter(([k]) => !CIRCUIT_KEYS.has(k)).map(([k, v]) =>
+    `${k} = ${Array.isArray(v) ? v.map((x) => +x.toFixed(3)).join(',') : typeof v === 'boolean' ? (v ? 'on' : 'off') : typeof v === 'number' ? +v.toFixed(4) : v}`);
+  // Circuit values only when changed, at full precision.
+  const circuit = CIRCUIT_INFO.filter(([k, def]) => patch[k] !== def).map(([k]) => `${k} = ${formatValue(patch[k])}`);
+  return [...knobs, ...(circuit.length ? ['# circuit (estimated component values)', ...circuit] : [])].join('\n');
+}
+
+const presetSel = document.getElementById('preset');
+presetSel.innerHTML = '<option value="">Init patch</option>' +
+  Object.keys(PRESETS).map((n) => `<option>${n}</option>`).join('');
+presetSel.onchange = () => loadPatch(presetSel.value ? parsePreset(PRESETS[presetSel.value]) : {});
+
+document.getElementById('copy').onclick = async () => {
+  const t = patchToText();
+  document.getElementById('text').value = t;
+  try { await navigator.clipboard.writeText(t); status('Copied to clipboard'); } catch { status('Patch text is in the box below'); }
+};
+document.getElementById('load').onclick = () => {
+  try { loadPatch(parsePreset(document.getElementById('text').value)); status('Loaded'); }
+  catch (e) { status(e.message); }
+};
+
+const statusEl = document.getElementById('status');
+function status(t) { statusEl.textContent = t; }
+
+document.getElementById('power').onclick = async (e) => {
+  if (ctx) {
+    if (ctx.state === 'running') { await ctx.suspend(); e.target.textContent = 'Start audio'; }
+    else { await ctx.resume(); e.target.textContent = 'Pause audio'; }
+    return;
+  }
+  ctx = new AudioContext({ latencyHint: 'interactive' });
+  analyser = new AnalyserNode(ctx, { fftSize: 2048 });
+  const hostSrc = document.getElementById('host-src').textContent;
+  const showStep = (step) => stepHdrs.forEach((h, i) => h.classList.toggle('active', i === step));
+  let mode = 'AudioWorklet';
+  try {
+    const src = document.getElementById('engine').textContent + '\n' + hostSrc;
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    node = new AudioWorkletNode(ctx, 'dfam', { outputChannelCount: [2] });
+    node.port.onmessage = ({ data }) => { if (data.type === 'step') showStep(data.step); };
+  } catch (err) {
+    // Fallback: run the model on the main thread.
+    mode = 'ScriptProcessor (fallback)';
+    const DfamHost = new Function(hostSrc + '\nreturn DfamHost;')();
+    const host = new DfamHost(ctx.sampleRate);
+    node = ctx.createScriptProcessor(2048, 0, 2);
+    node.port = { postMessage: (m) => host.message(m) };
+    let lastStep = -2;
+    node.onaudioprocess = (ev) => {
+      const l = ev.outputBuffer.getChannelData(0);
+      const step = host.render(l);
+      ev.outputBuffer.getChannelData(1).set(l);
+      if (step !== lastStep) { lastStep = step; showStep(step); }
+    };
+  }
+  node.connect(analyser).connect(ctx.destination);
+  send({ type: 'run', running });
+  initEngine();
+  e.target.textContent = 'Pause audio';
+  status(`${ctx.sampleRate} Hz · ${mode}`);
+  drawScope();
+};
+document.getElementById('run').onclick = (e) => {
+  running = !running;
+  send({ type: 'run', running });
+  e.target.textContent = running ? 'Stop sequencer' : 'Run sequencer';
+};
+document.getElementById('hit').onclick = () => send({ type: 'trigger', velocity: 1 });
+
+function drawScope() {
+  const c = document.getElementById('scope'), g = c.getContext('2d');
+  const buf = new Float32Array(analyser.fftSize);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+  (function frame() {
+    analyser.getFloatTimeDomainData(buf);
+    g.clearRect(0, 0, c.width, c.height);
+    g.strokeStyle = accent; g.lineWidth = 2; g.beginPath();
+    for (let i = 0; i < buf.length; i++) {
+      const x = (i / buf.length) * c.width, y = c.height / 2 - buf[i] * c.height * 0.45;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.stroke();
+    requestAnimationFrame(frame);
+  })();
+}
+
+refreshWidgets();
+</script>
+</body>
+</html>

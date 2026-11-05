@@ -1,0 +1,20 @@
+# Deep analog kick: triangle VCO1 with a fast pitch drop into a closed low-pass.
+tempo = 120
+pitch = 0,0,0,0,0,0,0,0
+velocity = 1,0,0,0,1,0,0,0.6
+seq_pitch_mod = off
+vco1_freq = 45
+vco1_wave = triangle
+vco_decay = 0.32
+vco1_eg_amount = 0.55
+vco1_level = 1.0
+vco2_level = 0
+noise_level = 0
+vcf_mode = lp
+cutoff = 120
+resonance = 0.25
+vcf_eg_amount = 0.6
+vcf_decay = 0.3
+vca_attack = fast
+vca_decay = 0.55
+volume = 0.9

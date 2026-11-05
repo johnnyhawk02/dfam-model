@@ -1,0 +1,24 @@
+# Tuned percussion groove: noise-modulated filter, slow-attack swells on weak steps.
+tempo = 110
+pitch = 0,2,0.75,1.5,0,2.5,1,0.5
+velocity = 1,0.3,0.7,0.5,0.9,0.35,0.8,0.6
+seq_pitch_mod = vco2
+vco1_freq = 70
+vco2_freq = 140
+vco1_wave = triangle
+vco2_wave = triangle
+vco_decay = 0.3
+vco1_eg_amount = 0.35
+vco2_eg_amount = 0.2
+fm_1_2 = 0.15
+vco1_level = 0.8
+vco2_level = 0.7
+noise_level = 0.25
+noise_vcf_mod = 0.25
+vcf_mode = lp
+cutoff = 400
+resonance = 0.6
+vcf_eg_amount = 0.45
+vcf_decay = 0.3
+vca_decay = 0.4
+volume = 0.85

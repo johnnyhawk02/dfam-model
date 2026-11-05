@@ -1,0 +1,24 @@
+# Metallic FM hits: VCO1 frequency-modulates VCO2, hard sync on, square waves.
+tempo = 128
+pitch = 0,1.5,0.5,2,0,1,0.25,2.5
+velocity = 1,0.5,0.8,0.4,1,0.6,0.9,0.5
+seq_pitch_mod = both
+vco1_freq = 90
+vco2_freq = 410
+vco1_wave = square
+vco2_wave = square
+vco_decay = 0.25
+vco1_eg_amount = 0.2
+vco2_eg_amount = 0.35
+fm_1_2 = 0.45
+hard_sync = on
+vco1_level = 0.3
+vco2_level = 0.9
+noise_level = 0.1
+vcf_mode = lp
+cutoff = 900
+resonance = 0.55
+vcf_eg_amount = 0.5
+vcf_decay = 0.22
+vca_decay = 0.3
+volume = 0.8

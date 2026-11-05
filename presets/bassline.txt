@@ -1,0 +1,21 @@
+# Sequenced acid-ish bass: VCO2 follows the sequencer, resonant LP sweeps.
+tempo = 118
+pitch = 0,0,1,0,0.583,0,1.25,0.25
+velocity = 1,0.7,0.9,0.5,1,0.6,0.9,0.8
+seq_pitch_mod = both
+vco1_freq = 55
+vco2_freq = 55.4
+vco1_wave = square
+vco2_wave = square
+vco_decay = 0.2
+vco1_eg_amount = 0.0
+vco2_eg_amount = 0.0
+vco1_level = 0.7
+vco2_level = 0.7
+vcf_mode = lp
+cutoff = 180
+resonance = 0.8
+vcf_eg_amount = 0.65
+vcf_decay = 0.35
+vca_decay = 0.42
+volume = 0.8

@@ -1,0 +1,23 @@
+# Snare-ish: two detuned VCOs plus noise through a high-passed, resonant ladder.
+tempo = 120
+pitch = 0,0,0,0,0,0,0,0
+velocity = 0,0,1,0,0,0,1,0.3
+seq_pitch_mod = off
+vco1_freq = 180
+vco2_freq = 330
+vco1_wave = triangle
+vco2_wave = triangle
+vco_decay = 0.2
+vco1_eg_amount = 0.25
+vco2_eg_amount = 0.25
+vco1_level = 0.5
+vco2_level = 0.4
+noise_level = 0.9
+vcf_mode = hp
+cutoff = 350
+resonance = 0.35
+vcf_eg_amount = 0.3
+vcf_decay = 0.25
+vca_attack = fast
+vca_decay = 0.33
+volume = 0.9
