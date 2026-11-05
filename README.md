@@ -2,6 +2,8 @@
 
 A component-level emulation of a Moog DFAM-style percussion synth, as a header-only C++17 library and a command-line renderer.
 
+**Try it in the browser:** https://johnnyhawk02.github.io/dfam-model/ (playground and demo renders). The site is built from `site/index.html`, `js/` and `demos/` by `.github/workflows/pages.yml` on every push to main.
+
 Moog has not published DFAM schematics. Each circuit block here is modelled on the matching block in Moog's published Werkstatt-01 schematic and on the Moog-ladder modelling papers, then wired the way the DFAM manual describes. Component values are plausible engineering choices tuned to land DFAM-like panel ranges. They are not measured from a DFAM. See `research/dfam-circuit-sources.md`.
 
 ## Build and run
