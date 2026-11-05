@@ -27,7 +27,11 @@ The output is a 24-bit mono WAV at 48 kHz (`--rate` changes it). The core runs a
 node js/render.mjs presets/metal.txt metal.wav --seconds 8 cutoff=1500   # CLI, same flags as dfam_render
 ```
 
-**Playground:** open `js/index.html` directly in a browser, with no server needed. It's a self-contained file with the model and presets inlined. It has every panel control, the 8-step pitch and velocity grid, presets, a scope, a manual trigger, copy/paste of preset text, and a collapsible panel of the estimated circuit values. Knobs change live without resetting the circuit. The temperature, unit (seed) and oversampling controls rebuild it. Served over http it runs in an AudioWorklet. Opened from a file it falls back to a main-thread ScriptProcessor, which is shown next to the sample rate. Switch to 2x oversampling if it crackles.
+**Playground:** open `js/index.html` directly in a browser, with no server needed. It's a self-contained file with the model and presets inlined. It has every panel control, the 8-step pitch and velocity grid, presets, a scope and a manual trigger. Knobs change live without resetting the circuit. Served over http it runs in an AudioWorklet. Opened from a file it falls back to a main-thread ScriptProcessor, which is shown next to the sample rate. Switch to 2x oversampling if it crackles.
+
+The main view has only the DFAM panel controls and the 8-step pitch and velocity grid. Everything else (steps per beat, temperature, unit seed, oversampling, preset text and the Circuit values) is under the collapsed **Advanced** section.
+
+**Per-step lanes:** long-press any panel control (mouse or touch) to open an 8-step lane for it. A step you set overrides the knob on that step; unset steps use the knob. Controls with a lane are marked with a dot. Lanes are saved in the preset text as `lock.<key> = v1,-,-,v4,...` (`-` means use the knob). Only the JS model plays them so far. `dfam_render` ignores `lock.` lines with a warning.
 
 `js/index.html` is generated. Edit `js/playground.src.html`, `js/dfam.js` or `presets/*.txt`, then run `node js/build-standalone.mjs`.
 

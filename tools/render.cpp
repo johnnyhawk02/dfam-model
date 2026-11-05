@@ -173,6 +173,10 @@ bool apply(Patch& p, const std::string& line, const std::map<std::string, Setter
   const auto eq = l.find('=');
   if (eq == std::string::npos) return trim(l).empty();
   const std::string key = trim(l.substr(0, eq)), val = trim(l.substr(eq + 1));
+  if (key.rfind("lock.", 0) == 0) {  // per-step locks from the JS playground
+    std::cerr << "ignoring " << key << ": parameter locks are only in the JS model for now\n";
+    return true;
+  }
   auto it = s.find(key);
   if (it == s.end()) {
     std::cerr << "unknown key: " << key << "\n";
