@@ -362,7 +362,12 @@ export class Dfam {
   constructor(sampleRate, patch = {}, oversample = 4) {
     this.oversample = oversample;
     this.fs = sampleRate * oversample;
-    this.p = { ...DEFAULT_PATCH, ...patch };
+    // knobs: the panel settings. p: what the circuit uses now, which is knobs
+    // with this step's parameter locks (patch.locks, see setLocks) applied.
+    this.knobs = { ...DEFAULT_PATCH, ...patch };
+    delete this.knobs.locks;
+    this.p = { ...this.knobs };
+    this.locks = {};
     const p = this.p, fs = this.fs;
     const tempK = 273.15 + p.temperature, trimK = 273.15 + p.trim_temperature;
     const rng = new Rng(p.seed);
@@ -400,14 +405,36 @@ export class Dfam {
     this.step = -1; this.stepPitch = 0; this.stepVel = 1;
     this.running = true;
     this.applyKnobs();
+    if (patch.locks) this.setLocks(patch.locks);
     this.stepClock = this.samplesPerStep;  // fire step 0 on the first sample
   }
 
   // Live knob changes. Circuit state (caps, phases, envelopes) is kept;
   // seed, temperature and CIRCUIT_REBUILD_KEYS only take effect in a new Dfam.
   setPatch(changes) {
-    Object.assign(this.p, changes);
-    this.applyKnobs();
+    const { locks, ...knobs } = changes;
+    Object.assign(this.knobs, knobs);
+    if (locks) this.setLocks(locks);
+    else this.applyStep();
+  }
+
+  // Parameter locks: { key: [8 values, null = use the knob] }. On each step
+  // the locked keys take that step's value. Only live keys make sense here.
+  setLocks(locks) {
+    this.locks = {};
+    for (const [k, lane] of Object.entries(locks))
+      if (k in DEFAULT_PATCH && lane.some((v) => v !== null && v !== undefined)) this.locks[k] = lane;
+    this.applyStep();
+  }
+
+  applyStep() {
+    const changes = {};
+    for (const [k, v] of Object.entries(this.knobs)) {
+      const lv = this.step >= 0 ? this.locks[k]?.[this.step] : undefined;
+      const want = lv === null || lv === undefined ? v : lv;
+      if (this.p[k] !== want) changes[k] = want;
+    }
+    if (Object.keys(changes).length) { Object.assign(this.p, changes); this.applyKnobs(); }
   }
 
   applyKnobs() {
@@ -448,6 +475,7 @@ export class Dfam {
     if (this.running && ++this.stepClock >= this.samplesPerStep) {
       this.stepClock -= this.samplesPerStep;
       this.step = (this.step + 1) % 8;
+      for (const k in this.locks) { this.applyStep(); break; }
       this.stepPitch = p.pitch[this.step];
       this.stepVel = p.velocity[this.step];
       if (this.stepVel > 0) this.trigger(this.stepVel);
@@ -498,13 +526,28 @@ export function parsePreset(text) {
     const line = raw.split('#')[0];
     const eq = line.indexOf('=');
     if (eq < 0) continue;
-    const key = line.slice(0, eq).trim(), val = line.slice(eq + 1).trim();
+    let key = line.slice(0, eq).trim(), val = line.slice(eq + 1).trim();
+    // "lock.cutoff = 300,-,-,900,-,-,-,-": a per-step lane, "-" = use the knob.
+    const lock = key.startsWith('lock.');
+    if (lock) key = key.slice(5);
     if (!(key in DEFAULT_PATCH)) throw new Error(`unknown key: ${key}`);
     const def = DEFAULT_PATCH[key];
-    if (Array.isArray(def)) patch[key] = val.split(',').map(Number);
-    else if (typeof def === 'boolean') patch[key] = val === 'on' || val === '1' || val === 'true';
-    else if (typeof def === 'number') patch[key] = Number(val);
-    else patch[key] = val;
+    const conv = (v) => (typeof def === 'boolean' ? v === 'on' || v === '1' || v === 'true'
+      : typeof def === 'number' ? Number(v) : v);
+    if (lock) {
+      if (Array.isArray(def)) throw new Error(`${key} can't be locked`);
+      const lane = val.split(',').map((v) => v.trim()).map((v) => (v === '-' || v === '' ? null : conv(v)));
+      (patch.locks ??= {})[key] = Array.from({ length: 8 }, (_, i) => lane[i] ?? null);
+    } else if (Array.isArray(def)) patch[key] = val.split(',').map(Number);
+    else patch[key] = conv(val);
   }
   return patch;
+}
+
+// Preset lines for parameter locks, in the format parsePreset reads.
+export function locksToText(locks = {}, fmt = String) {
+  const one = (v) => (v === null || v === undefined ? '-' : typeof v === 'boolean' ? (v ? 'on' : 'off')
+    : typeof v === 'number' ? fmt(v) : String(v));
+  return Object.entries(locks).filter(([, l]) => l.some((v) => v !== null && v !== undefined))
+    .map(([k, l]) => `lock.${k} = ${l.map(one).join(',')}`);
 }

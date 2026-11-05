@@ -55,6 +55,26 @@
   .cctl button { padding: 0; border: 0; background: none; color: var(--muted); visibility: hidden; }
   .cctl button.show { visibility: visible; }
   .cctl button:hover { color: var(--accent); }
+  .ctl { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .ctl.locked label { color: var(--accent); }
+  .ctl.locked label::after { content: ' ●'; font-size: 9px; vertical-align: middle; }
+  .lane-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--panel);
+                border-top: 2px solid var(--accent); padding: 12px 16px 18px; box-shadow: 0 -8px 30px #0008; }
+  .lane-sheet[hidden] { display: none; }
+  .lane-sheet .top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .lane-sheet h2 { margin: 0; flex: 1; }
+  .lane { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; max-width: 760px; }
+  .lane .cell { display: grid; justify-items: center; gap: 4px; padding: 4px 0; border-radius: 6px; }
+  .lane .cell.active { background: #e05a3a33; }
+  .lane .num { color: var(--muted); font-size: 11px; }
+  .lane input[type=range] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 26px; }
+  .lane .cell.unset input[type=range] { opacity: .35; }
+  .lane .val { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .lane .cell.unset .val { color: var(--muted); }
+  .lane .clr { padding: 0 6px; font-size: 11px; visibility: hidden; }
+  .lane .cell:not(.unset) .clr { visibility: visible; }
+  .lane .opt { padding: 8px 2px; width: 100%; font-size: 11px; }
+  .lane .cell.unset .opt { color: var(--muted); }
   @media (max-width: 600px) {
     .cgroups { grid-template-columns: 1fr; }
     .cctl { grid-template-columns: 110px 1fr 74px 18px; }
@@ -75,9 +95,16 @@
 <main id="main">
   <section class="wide">
     <h2>Sequencer</h2>
+    <p class="note" style="margin:-4px 0 10px">Long-press any control to give it its own 8-step lane.</p>
     <div class="steps" id="steps"></div>
   </section>
 </main>
+<div class="lane-sheet" id="lane-sheet" hidden>
+  <div class="top"><h2 id="lane-title"></h2>
+    <span class="note">Unset steps (dimmed) use the knob.</span>
+    <button id="lane-clear">Clear lane</button><button id="lane-done" class="primary">Done</button></div>
+  <div class="lane" id="lane"></div>
+</div>
 <!-- Built by build-standalone.mjs: engine and presets are inlined so this
      file works when opened directly, with no server. -->
 <script id="engine">/*@ENGINE@*/</script>
@@ -127,27 +154,31 @@ if (typeof registerProcessor === 'function') {
 
 // [key, label, min, max, step, log?]  Knob ranges for the playground.
 const PANELS = [
-  ['Sequencer', [['tempo', 'Tempo (BPM)', 40, 300, 1], ['steps_per_beat', 'Steps / beat', 1, 8, 1]],
-    [['seq_pitch_mod', 'Seq pitch', ['both', 'off', 'vco2']]]],
-  ['VCO 1', [['vco1_freq', 'Frequency', 10, 4000, 0, true], ['vco1_eg_amount', 'EG amount', -1, 1, 0.01],
-    ['vco1_level', 'Mixer level', 0, 1, 0.01]], [['vco1_wave', 'Wave', ['triangle', 'square']]]],
+  ['Sequencer', [['tempo', 'Tempo (BPM)', 40, 300, 1], ['vco_decay', 'VCO decay', 0, 1, 0.01]],
+    [['seq_pitch_mod', 'Seq pitch mod', ['both', 'off', 'vco2']]]],
+  ['VCO 1', [['vco1_freq', 'Frequency', 10, 4000, 0, true], ['vco1_eg_amount', 'EG amount', -1, 1, 0.01]],
+    [['vco1_wave', 'Wave', ['triangle', 'square']]]],
   ['VCO 2', [['vco2_freq', 'Frequency', 10, 4000, 0, true], ['vco2_eg_amount', 'EG amount', -1, 1, 0.01],
-    ['vco2_level', 'Mixer level', 0, 1, 0.01], ['fm_1_2', '1→2 FM', 0, 1, 0.01]],
+    ['fm_1_2', '1→2 FM', 0, 1, 0.01]],
     [['vco2_wave', 'Wave', ['triangle', 'square']], ['hard_sync', 'Hard sync', [false, true]]]],
-  ['Pitch EG / noise', [['vco_decay', 'VCO decay', 0, 1, 0.01], ['noise_level', 'Noise level', 0, 1, 0.01],
-    ['noise_vcf_mod', 'Noise → VCF', 0, 1, 0.01]], []],
+  ['Mixer', [['vco1_level', 'VCO 1', 0, 1, 0.01], ['noise_level', 'Noise', 0, 1, 0.01],
+    ['vco2_level', 'VCO 2', 0, 1, 0.01]], []],
   ['VCF', [['cutoff', 'Cutoff', 20, 16000, 0, true], ['resonance', 'Resonance', 0, 1, 0.01],
-    ['vcf_eg_amount', 'EG amount', -1, 1, 0.01], ['vcf_decay', 'VCF decay', 0, 1, 0.01]],
-    [['vcf_mode', 'Mode', ['lp', 'hp']]]],
+    ['vcf_decay', 'VCF decay', 0, 1, 0.01], ['vcf_eg_amount', 'EG amount', -1, 1, 0.01],
+    ['noise_vcf_mod', 'Noise → VCF', 0, 1, 0.01]], [['vcf_mode', 'Mode', ['lp', 'hp']]]],
   ['VCA', [['vca_decay', 'VCA decay', 0, 1, 0.01], ['volume', 'Volume', 0, 1, 0.01]],
     [['vca_attack', 'Attack', ['fast', 'slow']]]],
-  ['Analog', [['temperature', 'Temp (°C)', 0, 50, 0.5], ['seed', 'Unit (seed)', 1, 64, 1]],
-    [['oversample', 'Oversample', [4, 2]]]],
+];
+// Not on the DFAM panel: shown under Advanced.
+const ADVANCED = [
+  ['steps_per_beat', 'Steps / beat', 1, 8, 1], ['temperature', 'Temp (°C)', 0, 50, 0.5], ['seed', 'Unit (seed)', 1, 64, 1],
 ];
 const RESET_KEYS = new Set(['temperature', 'seed', 'oversample', ...CIRCUIT_REBUILD_KEYS]);  // need a new engine
 const CIRCUIT_KEYS = new Set(CIRCUIT_INFO.map((e) => e[0]));
 
 let patch = structuredClone({ ...DEFAULT_PATCH });
+let locks = {};          // key -> [8 values, null = use the knob]
+const SPECS = {};        // key -> control spec, for the lane editor
 let oversample = 4;
 let ctx = null, node = null, analyser = null, running = true;
 const widgets = {};  // key -> { set(value) }
@@ -157,10 +188,11 @@ const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : step === 0 ? (v >=
 function send(msg) { node?.port.postMessage(msg); }
 function change(key, value) {
   if (key === 'oversample') oversample = value; else patch[key] = value;
+  if (key === laneKey) drawLane();
   if (RESET_KEYS.has(key)) initEngine();
   else send({ type: 'patch', changes: { [key]: value } });
 }
-function initEngine() { send({ type: 'init', patch, oversample }); }
+function initEngine() { send({ type: 'init', patch: { ...patch, locks }, oversample }); }
 let rebuildTimer = 0;  // circuit sliders rebuild the engine; don't do it on every drag event
 function changeSoon(key, value) {
   if (!RESET_KEYS.has(key)) return change(key, value);
@@ -176,10 +208,13 @@ function slider([key, label, min, max, step, log]) {
   const input = row.querySelector('input'), out = row.querySelector('output');
   const toPos = (v) => (log ? (1000 * Math.log(v / min)) / Math.log(max / min) : v);
   const fromPos = (p) => (log ? min * Math.pow(max / min, p / 1000) : Number(p));
-  Object.assign(input, log ? { min: 0, max: 1000, step: 1 } : { min, max, step });
+  const range = log ? { min: 0, max: 1000, step: 1 } : { min, max, step };
+  Object.assign(input, range);
   const set = (v) => { input.value = toPos(v); out.value = fmt(v, step); };
   input.addEventListener('input', () => { const v = fromPos(input.value); out.value = fmt(v, step); change(key, v); });
   widgets[key] = { set };
+  SPECS[key] = { label, range, toPos, fromPos, show: (v) => fmt(v, step), row };
+  longPress(row, key, () => { set(patch[key]); change(key, patch[key]); });
   return row;
 }
 
@@ -197,8 +232,107 @@ function segmented([key, label, options]) {
   });
   const set = (v) => buttons.forEach((b, i) => b.classList.toggle('sel', options[i] === v));
   widgets[key] = { set };
+  if (key !== 'oversample') {
+    SPECS[key] = { label, options, row };
+    longPress(row, key, () => {});
+  }
   return row;
 }
+
+// Long-press (mouse or touch) on a control opens its step lane. A press that
+// moved the knob before the timer fired is put back, so holding the track
+// doesn't leave the value where the finger landed.
+function longPress(row, key, restore) {
+  if (RESET_KEYS.has(key)) return;
+  let timer = 0, x0 = 0, y0 = 0, before, fired = false;
+  const cancel = () => clearTimeout(timer);
+  row.addEventListener('pointerdown', (e) => {
+    fired = false; x0 = e.clientX; y0 = e.clientY; before = patch[key];
+    cancel();
+    timer = setTimeout(() => {
+      fired = true;
+      if (patch[key] !== before) { patch[key] = before; restore(); }
+      row.querySelectorAll('input').forEach((i) => i.blur());
+      openLane(key);
+    }, 450);
+  });
+  row.addEventListener('pointermove', (e) => { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 8) cancel(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) row.addEventListener(ev, cancel);
+  row.addEventListener('contextmenu', (e) => e.preventDefault());
+  row.addEventListener('click', (e) => { if (fired) { e.stopPropagation(); e.preventDefault(); fired = false; } }, true);
+  // While the lane is open after a long press, ignore the rest of that drag.
+  row.addEventListener('input', (e) => {
+    if (!fired) return;
+    e.stopImmediatePropagation();
+    widgets[key].set(patch[key]);
+  }, true);
+}
+
+const laneSheet = document.getElementById('lane-sheet'), laneEl = document.getElementById('lane');
+let laneKey = null, laneCells = [];
+function sendLocks() { send({ type: 'patch', changes: { locks } }); }
+function markLocked() {
+  for (const [k, sp] of Object.entries(SPECS)) sp.row.classList.toggle('locked', !!locks[k]?.some((v) => v !== null));
+}
+function setLock(i, v) {
+  const lane = locks[laneKey] ?? Array(8).fill(null);
+  lane[i] = v;
+  if (lane.some((x) => x !== null)) locks[laneKey] = lane; else delete locks[laneKey];
+  sendLocks(); markLocked(); drawLane();
+}
+function openLane(key) {
+  laneKey = key;
+  const sp = SPECS[key];
+  document.getElementById('lane-title').textContent = sp.label + ' · per step';
+  laneEl.innerHTML = '';
+  laneCells = [];
+  for (let i = 0; i < 8; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `<span class="num">${i + 1}</span>`;
+    if (sp.options) {
+      // Tap cycles: knob (unset) -> each option -> knob.
+      const b = document.createElement('button');
+      b.className = 'opt';
+      b.onclick = () => {
+        const cur = locks[key]?.[i] ?? null;
+        const idx = cur === null ? -1 : sp.options.indexOf(cur);
+        setLock(i, idx + 1 < sp.options.length ? sp.options[idx + 1] : null);
+      };
+      cell.append(b);
+    } else {
+      const input = Object.assign(document.createElement('input'), { type: 'range', ...sp.range });
+      input.addEventListener('input', () => setLock(i, sp.fromPos(Number(input.value))));
+      const val = Object.assign(document.createElement('span'), { className: 'val' });
+      const clr = Object.assign(document.createElement('button'), { className: 'clr', textContent: '×', title: 'Use the knob on this step' });
+      clr.onclick = () => setLock(i, null);
+      cell.append(input, val, clr);
+    }
+    laneEl.append(cell);
+    laneCells.push(cell);
+  }
+  laneSheet.hidden = false;
+  document.body.style.paddingBottom = laneSheet.offsetHeight + 'px';
+  drawLane();
+}
+function drawLane() {
+  if (laneKey === null) return;
+  const sp = SPECS[laneKey];
+  laneCells.forEach((cell, i) => {
+    const lv = locks[laneKey]?.[i] ?? null, v = lv === null ? patch[laneKey] : lv;
+    cell.classList.toggle('unset', lv === null);
+    const show = (x) => (x === true ? 'on' : x === false ? 'off' : String(x));
+    if (sp.options) cell.querySelector('.opt').textContent = lv === null ? `(${show(v)})` : show(v);
+    else {
+      const input = cell.querySelector('input');
+      if (document.activeElement !== input) input.value = sp.toPos(v);
+      cell.querySelector('.val').textContent = sp.show(v);
+    }
+  });
+}
+function laneStep(step) { laneCells.forEach((c, i) => c.classList.toggle('active', i === step)); }
+document.getElementById('lane-done').onclick = () => { laneSheet.hidden = true; laneKey = null; document.body.style.paddingBottom = ''; };
+document.getElementById('lane-clear').onclick = () => { delete locks[laneKey]; sendLocks(); markLocked(); drawLane(); };
 
 // Build panels
 const main = document.getElementById('main');
@@ -209,6 +343,20 @@ for (const [title, sliders, switches] of PANELS) {
   switches.forEach((s) => sec.append(segmented(s)));
   if (title === 'Sequencer') document.querySelector('section.wide').append(...sec.querySelectorAll('.ctl'));
   else main.append(sec);
+}
+
+// Advanced: everything that isn't a DFAM panel control, collapsed by default.
+const advSec = document.createElement('section');
+advSec.className = 'wide';
+advSec.innerHTML = `<details class="circuit" id="advanced"><summary>Advanced</summary>
+  <p class="note">Controls the real DFAM doesn't have: steps per beat, the analog drift settings, oversampling,
+  preset text and the estimated component values. Temperature, unit (seed) and oversampling rebuild the circuit.</p>
+  <div class="cgroups" id="adv-ctls"></div></details>`;
+{
+  const g = advSec.querySelector('#adv-ctls'), col = document.createElement('div');
+  ADVANCED.forEach((s) => col.append(slider(s)));
+  col.append(segmented(['oversample', 'Oversample', [4, 2]]));
+  g.append(col);
 }
 
 // Circuit panel: the estimated component values. Each has a log slider from
@@ -238,10 +386,10 @@ function circuitRow([key, def, , help, live]) {
   widgets[key] = { set };
   return row;
 }
-const circuitSec = document.createElement('section');
+const circuitSec = document.createElement('div');
 {
   const sec = circuitSec;
-  sec.className = 'wide';
+  sec.style.marginTop = '14px';
   sec.innerHTML = `<details class="circuit"><summary>Circuit: estimated component values</summary>
     <p class="note">Moog hasn't published DFAM schematics, so these values are guesses. Tune them by ear or against
     recordings. Units are SI (F, Ω, V, s, Hz). <code>_tol</code> is a ±3σ tolerance and <code>_sd</code> is 1σ; both set the
@@ -262,7 +410,7 @@ const circuitSec = document.createElement('section');
     byGroup[e[2]].append(circuitRow(e));
   }
   sec.querySelector('#circuit-reset').onclick = () => {
-    Object.assign(patch, DEFAULT_CIRCUIT);
+    Object.assign(patch, DEFAULT_CIRCUIT);  // (locks are kept)
     refreshWidgets();
     initEngine();
   };
@@ -298,13 +446,15 @@ for (const [key, label, min, max] of [['pitch', 'Pitch (V)', -3, 3], ['velocity'
 const scopeSec = document.createElement('section');
 scopeSec.className = 'wide';
 scopeSec.innerHTML = `<h2>Output</h2><canvas id="scope" width="1200" height="240"></canvas>
-  <div class="row" style="margin-top:10px"><button id="copy">Copy patch as preset text</button>
+  <p class="note">If the audio crackles, open Advanced and switch Oversample to 2×.</p>`;
+const textBox = document.createElement('div');
+textBox.style.marginTop = '14px';
+textBox.innerHTML = `<div class="row"><button id="copy">Copy patch as preset text</button>
   <button id="load">Load preset text</button></div>
-  <textarea id="text" spellcheck="false" placeholder="Preset text (same format as presets/*.txt)"></textarea>
-  <p class="note">Knobs change live. Temperature, unit (seed), oversampling and some circuit values rebuild the circuit.
-  The model is the same code as the C++ version, so a preset copied here renders identically with dfam_render.
-  If the audio crackles, switch Oversample to 2×.</p>`;
-main.append(scopeSec, circuitSec);
+  <textarea id="text" spellcheck="false" placeholder="Preset text (same format as presets/*.txt)" style="margin-top:8px"></textarea>
+  <p class="note">The model is the same code as the C++ version, so a preset copied here renders identically with dfam_render.</p>`;
+advSec.querySelector('details').append(textBox, circuitSec);
+main.append(scopeSec, advSec);
 
 function refreshWidgets() {
   for (const [k, w] of Object.entries(widgets)) w.set(k === 'oversample' ? oversample : patch[k]);
@@ -313,7 +463,11 @@ function refreshWidgets() {
 }
 
 function loadPatch(p) {
-  patch = { ...structuredClone(DEFAULT_PATCH), ...p };
+  const { locks: l = {}, ...knobs } = p;
+  patch = { ...structuredClone(DEFAULT_PATCH), ...knobs };
+  locks = structuredClone(l);
+  markLocked();
+  if (laneKey !== null) openLane(laneKey);
   refreshWidgets();
   initEngine();
 }
@@ -323,6 +477,7 @@ function patchToText() {
     `${k} = ${Array.isArray(v) ? v.map((x) => +x.toFixed(3)).join(',') : typeof v === 'boolean' ? (v ? 'on' : 'off') : typeof v === 'number' ? +v.toFixed(4) : v}`);
   // Circuit values only when changed, at full precision.
   const circuit = CIRCUIT_INFO.filter(([k, def]) => patch[k] !== def).map(([k]) => `${k} = ${formatValue(patch[k])}`);
+  knobs.push(...locksToText(locks, (x) => +x.toFixed(4)));
   return [...knobs, ...(circuit.length ? ['# circuit (estimated component values)', ...circuit] : [])].join('\n');
 }
 
@@ -353,7 +508,7 @@ document.getElementById('power').onclick = async (e) => {
   ctx = new AudioContext({ latencyHint: 'interactive' });
   analyser = new AnalyserNode(ctx, { fftSize: 2048 });
   const hostSrc = document.getElementById('host-src').textContent;
-  const showStep = (step) => stepHdrs.forEach((h, i) => h.classList.toggle('active', i === step));
+  const showStep = (step) => { stepHdrs.forEach((h, i) => h.classList.toggle('active', i === step)); laneStep(step); };
   let mode = 'AudioWorklet';
   try {
     const src = document.getElementById('engine').textContent + '\n' + hostSrc;
